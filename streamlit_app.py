@@ -5,6 +5,8 @@ import numpy as np
 
 st.set_page_config(page_title="Smart Stock Scanner", layout="wide")
 
+# ========= FUNCTIONS ============
+
 def calculate_rsi(data, window=14):
     delta = data['Close'].diff()
     gain = delta.clip(lower=0).rolling(window=window).mean()
@@ -19,15 +21,36 @@ def calculate_macd(data):
     signal = macd.ewm(span=9, adjust=False).mean()
     return macd - signal
 
-st.title("📈 Smart Stock Scanner (Cloud Version)")
+# ========= PAGE HEADER ============
 
-ticker_input = st.text_area("Enter comma-separated tickers (e.g., AMD, AAPL, XOM):", "AMD, ARM, ADCT, LTRY, XOM, LMT, ZTEK, TPR")
+st.title("📈 Smart Stock Scanner (Cloud Version)")
+st.markdown("Use the panel below to input tickers and scan for short- and long-term opportunities.")
+
+with st.expander("ℹ️ **How scoring works**"):
+    st.markdown("""
+    **Short-Term Score (Max 5)**:
+    - Price above 50-day SMA ✅
+    - Price above 100-day SMA ✅
+    - MACD Histogram positive ✅
+    - RSI under 55 ✅
+    - Volume > 1.5× average ✅
+
+    **Long-Term Score (Max 3)**:
+    - Price above 100-day SMA ✅
+    - MACD Histogram positive ✅
+    - RSI under 60 ✅
+    """)
+
+# ========= USER INPUT ============
+
+ticker_input = st.text_area("Enter comma-separated tickers (e.g., AMD, AAPL, XOM):", 
+                            "AMD, ARM, ADCT, LTRY, XOM, LMT, ZTEK, TPR")
 
 if st.button("Run Scan"):
     tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     results = []
 
-    with st.spinner("Scanning stocks..."):
+    with st.spinner("🔎 Scanning stocks..."):
         for ticker in tickers:
             try:
                 hist = yf.download(ticker, period="6mo", progress=False)
@@ -42,39 +65,55 @@ if st.button("Run Scan"):
                 vol = hist['Volume'].iloc[-1]
                 avg_vol = hist['Volume'].rolling(20).mean().iloc[-1]
 
-                short_score = sum([
+                short_score = int(sum([
                     price > sma_50,
                     price > sma_100,
                     macd_hist > 0,
                     rsi < 55,
                     vol > 1.5 * avg_vol
-                ])
+                ]))
 
-                long_score = sum([
+                long_score = int(sum([
                     price > sma_100,
                     macd_hist > 0,
                     rsi < 60
-                ])
+                ]))
 
                 results.append({
                     "Ticker": ticker,
-                    "Price": round(price, 2),
-                    "50 SMA": round(sma_50, 2),
-                    "100 SMA": round(sma_100, 2),
-                    "MACD Hist": round(macd_hist, 4),
-                    "RSI": round(rsi, 2),
-                    "Curr Vol": int(vol),
-                    "Avg Vol (20D)": int(avg_vol),
-                    "Short Score": short_score,
-                    "Long Score": long_score
+                    "Price ($)": round(float(price), 2),
+                    "50-Day SMA": round(float(sma_50), 2),
+                    "100-Day SMA": round(float(sma_100), 2),
+                    "MACD Histogram": round(float(macd_hist), 4),
+                    "RSI": round(float(rsi), 2),
+                    "Current Volume": f"{int(vol):,}",
+                    "Avg Volume (20D)": f"{int(avg_vol):,}",
+                    "Short-Term Score": short_score,
+                    "Long-Term Score": long_score
                 })
+
             except Exception as e:
                 st.error(f"{ticker} failed: {e}")
 
+    # ========= DISPLAY OUTPUT ============
     if results:
         df = pd.DataFrame(results)
-        st.success("Scan Complete!")
-        st.dataframe(df.sort_values("Short Score", ascending=False), use_container_width=True)
-        st.download_button("📥 Download CSV", df.to_csv(index=False), "scanned_stocks.csv", "text/csv")
+        st.success("✅ Scan Complete!")
+
+        # Clean and safely sort
+        if "Short-Term Score" in df.columns:
+            try:
+                df["Short-Term Score"] = pd.to_numeric(df["Short-Term Score"], errors="coerce")
+                df_sorted = df.sort_values("Short-Term Score", ascending=False)
+            except Exception as e:
+                st.warning(f"⚠️ Could not sort by Short-Term Score: {e}")
+                df_sorted = df
+        else:
+            df_sorted = df
+
+        st.dataframe(df_sorted, use_container_width=True)
+
+        st.download_button("📥 Download CSV", df_sorted.to_csv(index=False), 
+                           "scanned_stocks.csv", "text/csv")
     else:
-        st.warning("No valid tickers or no data found.")
+        st.warning("⚠️ No valid data found. Try different tickers.")
