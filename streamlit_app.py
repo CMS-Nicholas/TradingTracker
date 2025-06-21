@@ -1,119 +1,88 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
-import numpy as np
+from modules.data_loader import load_ticker_data
+from modules.scoring import compute_scores
+from modules.visuals import display_charts
+from modules.filters import filter_dataframe
+from modules.display import render_score_table, render_summary_box
+from modules.upload import upload_watchlist
+from modules.ai_commentary import generate_ai_summary
+from modules.email_alerts import send_alert_email
+from modules.company_overview import fetch_company_overview, generate_company_summary
 
-st.set_page_config(page_title="Smart Stock Scanner", layout="wide")
+st.set_page_config(page_title="📈 Modular Stock Scanner", layout="wide")
+st.title("📈 Modular Smart Stock Scanner")
 
-# ========= FUNCTIONS ============
+# === Load secrets from Streamlit Cloud ===
+sendgrid_key = st.secrets["SENDGRID_KEY"]
+openai_key = st.secrets["OPENAI_KEY"]
+email_to = st.secrets["EMAIL_TO"]
 
-def calculate_rsi(data, window=14):
-    delta = data['Close'].diff()
-    gain = delta.clip(lower=0).rolling(window=window).mean()
-    loss = -delta.clip(upper=0).rolling(window=window).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+# Sidebar Controls
+st.sidebar.header("⚙️ Scan Controls")
+rsi_threshold = st.sidebar.slider("RSI Threshold (Short-Term)", 40, 70, 55)
+rsi_long_threshold = st.sidebar.slider("RSI Threshold (Long-Term)", 40, 70, 60)
+vol_multiplier = st.sidebar.slider("Volume Multiplier", 1.0, 3.0, 1.5)
+min_short_score = st.sidebar.slider("Min Short-Term Score", 0, 5, 3)
+min_long_score = st.sidebar.slider("Min Long-Term Score", 0, 3, 2)
 
-def calculate_macd(data):
-    exp1 = data['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = data['Close'].ewm(span=26, adjust=False).mean()
-    macd = exp1 - exp2
-    signal = macd.ewm(span=9, adjust=False).mean()
-    return macd - signal
+# Watchlist Upload or Manual Entry
+tickers = upload_watchlist()
 
-# ========= PAGE HEADER ============
-
-st.title("📈 Smart Stock Scanner (Cloud Version)")
-st.markdown("Use the panel below to input tickers and scan for short- and long-term opportunities.")
-
-with st.expander("ℹ️ **How scoring works**"):
-    st.markdown("""
-    **Short-Term Score (Max 5)**:
-    - Price above 50-day SMA ✅
-    - Price above 100-day SMA ✅
-    - MACD Histogram positive ✅
-    - RSI under 55 ✅
-    - Volume > 1.5× average ✅
-
-    **Long-Term Score (Max 3)**:
-    - Price above 100-day SMA ✅
-    - MACD Histogram positive ✅
-    - RSI under 60 ✅
-    """)
-
-# ========= USER INPUT ============
-
-ticker_input = st.text_area("Enter comma-separated tickers (e.g., AMD, AAPL, XOM):", 
-                            "AMD, ARM, ADCT, LTRY, XOM, LMT, ZTEK, TPR")
-
-if st.button("Run Scan"):
-    tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+if tickers and st.button("🔍 Run Scan"):
     results = []
 
     with st.spinner("🔎 Scanning stocks..."):
         for ticker in tickers:
-            try:
-                hist = yf.download(ticker, period="6mo", progress=False)
-                if len(hist) < 100:
-                    continue
+            df = load_ticker_data(ticker)
+            if df is not None:
+                scores, indicators = compute_scores(df, rsi_threshold, rsi_long_threshold, vol_multiplier)
+                result = {"Ticker": ticker}
+                result.update(scores)
+                result.update(indicators)
+                results.append(result)
 
-                sma_50 = hist['Close'].rolling(50).mean().iloc[-1]
-                sma_100 = hist['Close'].rolling(100).mean().iloc[-1]
-                price = hist['Close'].iloc[-1]
-                rsi = calculate_rsi(hist).iloc[-1]
-                macd_hist = calculate_macd(hist).iloc[-1]
-                vol = hist['Volume'].iloc[-1]
-                avg_vol = hist['Volume'].rolling(20).mean().iloc[-1]
-
-                short_score = int(sum([
-                    price > sma_50,
-                    price > sma_100,
-                    macd_hist > 0,
-                    rsi < 55,
-                    vol > 1.5 * avg_vol
-                ]))
-
-                long_score = int(sum([
-                    price > sma_100,
-                    macd_hist > 0,
-                    rsi < 60
-                ]))
-
-                results.append({
-                    "Ticker": ticker,
-                    "Price ($)": round(float(price), 2),
-                    "50-Day SMA": round(float(sma_50), 2),
-                    "100-Day SMA": round(float(sma_100), 2),
-                    "MACD Histogram": round(float(macd_hist), 4),
-                    "RSI": round(float(rsi), 2),
-                    "Current Volume": f"{int(vol):,}",
-                    "Avg Volume (20D)": f"{int(avg_vol):,}",
-                    "Short-Term Score": short_score,
-                    "Long-Term Score": long_score
-                })
-
-            except Exception as e:
-                st.error(f"{ticker} failed: {e}")
-
-    # ========= DISPLAY OUTPUT ============
     if results:
-        df = pd.DataFrame(results)
-        st.success("✅ Scan Complete!")
+        df_all = pd.DataFrame(results)
 
-        # Clean and safely sort
-        if "Short-Term Score" in df.columns:
-            try:
-                df["Short-Term Score"] = pd.to_numeric(df["Short-Term Score"], errors="coerce")
-                df_sorted = df.sort_values("Short-Term Score", ascending=False)
-            except Exception as e:
-                st.warning(f"⚠️ Could not sort by Short-Term Score: {e}")
-                df_sorted = df
+        st.write("Raw scan results:", df_all)
+
+        df_filtered = filter_dataframe(df_all, min_short_score, min_long_score)
+
+        if not df_filtered.empty:
+            st.markdown("### ⭐ Top Picks Summary")
+            render_summary_box(df_filtered)
+            st.markdown("### 📋 Scored Results")
+            render_score_table(df_filtered)
+
+            st.markdown("### 🧠 AI-Generated Market Summary")
+            summary = generate_ai_summary(df_filtered, openai_key)
+            st.info(summary)
+
+            st.markdown("### 📈 Charts by Ticker")
+            scroll_container = st.container()
+            with scroll_container:
+                scroll_columns = st.columns(len(df_filtered))
+                for i, ticker in enumerate(df_filtered["Ticker"].tolist()):
+                    chart_data = load_ticker_data(ticker)
+                    if chart_data is not None:
+                        with scroll_columns[i]:
+                            st.subheader(f"[{ticker}](#{ticker})")
+                            display_charts(ticker, chart_data)
+
+            # Company Overview Expansion
+            st.markdown("### 📅 Company Overview & Insights")
+            for ticker in df_filtered["Ticker"].tolist():
+                with st.expander(f"Show overview for {ticker}"):
+                    overview = fetch_company_overview(ticker)
+                    company_summary = generate_company_summary(overview, openai_key)
+                    st.markdown(company_summary)
+
+            if st.button("📤 Send Alert Email", key="send_email_button"):
+                html_content = df_filtered.to_html(index=False)
+                status = send_alert_email(sendgrid_key, email_to, "📈 Stock Scan Results", html_content)
+                st.success(f"Email sent! Status: {status}")
         else:
-            df_sorted = df
-
-        st.dataframe(df_sorted, use_container_width=True)
-
-        st.download_button("📥 Download CSV", df_sorted.to_csv(index=False), 
-                           "scanned_stocks.csv", "text/csv")
+            st.warning("⚠️ No tickers met the minimum scoring criteria.")
     else:
-        st.warning("⚠️ No valid data found. Try different tickers.")
+        st.warning("⚠️ No results found or tickers failed to load.")
