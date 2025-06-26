@@ -21,9 +21,8 @@ st.set_page_config(page_title="📈 Modular Stock & Crypto Scanner", layout="wid
 st.title("📈 Modular Smart Stock & Crypto Scanner")
 
 # 🔐 Load Secrets
-sendgrid_key = st.secrets["SENDGRID_KEY"]
 openai_key = st.secrets["OPENAI_KEY"]
-email_to = st.secrets["EMAIL_TO"]
+
 
 # ⚙️ Sidebar Controls
 st.sidebar.header("⚙️ Scan Controls")
