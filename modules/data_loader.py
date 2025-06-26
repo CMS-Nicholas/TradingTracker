@@ -3,15 +3,26 @@ import pandas as pd
 
 def load_ticker_data(ticker):
     try:
-        df = yf.download(ticker, period="6mo", progress=False)
-        if df.empty or len(df) < 60:
-            print(f"❌ {ticker} returned too little data.")
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="6mo")
+        if len(hist) < 60:
             return None
 
-        df = df[["Close", "Volume"]].dropna()
-        df = df.rename(columns=str.title)
-        print(f"✅ {ticker} returned {len(df)} rows from yfinance.")
-        return df
+        hist = hist.dropna()
+
+        # RSI calculation
+        delta = hist['Close'].diff()
+        gain = delta.clip(lower=0).rolling(window=14).mean()
+        loss = -delta.clip(upper=0).rolling(window=14).mean()
+        rs = gain / loss
+        hist['RSI'] = 100 - (100 / (1 + rs))
+
+        # MACD calculation
+        exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
+        hist['MACD'] = exp1 - exp2
+
+        return hist
     except Exception as e:
-        print(f"{ticker}: ❌ yfinance error – {e}")
+        print(f"Failed to load data for {ticker}: {e}")
         return None
