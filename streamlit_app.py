@@ -15,19 +15,62 @@ from modules.email_alerts import send_alert_email
 from modules.company_overview import fetch_company_overview, generate_company_summary
 from modules.crypto_overview import fetch_crypto_data, generate_crypto_summary
 from modules.crypto_scoring import score_crypto  # ✅ Confirmed
-from modules.alpaca_simulation import run_trade_simulation
+
+
 
 st.set_page_config(page_title="📈 Modular Stock & Crypto Scanner", layout="wide")
 st.title("📈 Modular Smart Stock & Crypto Scanner")
+st.markdown("### 🧭 Top 10 Movers (Daily or Weekly Change)")
+
+change_window = st.sidebar.radio("📈 % Change Window", ["1D", "7D"], index=0)
+default_tickers = ["AAPL", "MSFT", "NVDA", "AMD", "TSLA", "GOOGL", "META", "AMZN", "NFLX", "JPM"]
+
+default_results = []
+for ticker in default_tickers:
+    df = load_ticker_data(ticker)
+    if df is None or df.empty:
+        continue
+        df.attrs["ticker"] = ticker  # ✅ Ensure ticker is passed into scoring
+    scores, indicators = compute_scores(df, 55, 60, 1.5)
+    if not indicators:
+        continue
+    row = {"Ticker": ticker}
+    row.update(indicators)
+    default_results.append(row)
+
+if default_results:
+    top_df = pd.DataFrame(default_results)
+    sort_key = "Daily % Change" if change_window == "1D" else "Weekly % Change"
+    top_df = top_df.sort_values(by=sort_key, ascending=False).head(10)
+
+    scroll_cols = st.columns(len(top_df))
+    for i, row in top_df.iterrows():
+        with scroll_cols[i]:
+            price = row.get("Price ($)", 0)
+            change = row.get(sort_key, 0)
+
+            st.metric(
+                label=f"**{row['Ticker']}**",
+                value=f"${price:.2f}",
+                delta=f"{change:+.2f}%",
+            )
+
+            if st.button(f"➕ Add {row['Ticker']}", key=f"add_{row['Ticker']}"):
+                if "manual_watchlist" not in st.session_state:
+                    st.session_state["manual_watchlist"] = []
+                if row["Ticker"] not in st.session_state["manual_watchlist"]:
+                    st.session_state["manual_watchlist"].append(row["Ticker"])
 
 # 🔐 Load Secrets
+sendgrid_key = st.secrets["SENDGRID_KEY"]
 openai_key = st.secrets["OPENAI_KEY"]
-
+email_to = st.secrets["EMAIL_TO"]
 
 # ⚙️ Sidebar Controls
 st.sidebar.header("⚙️ Scan Controls")
 debug_mode = st.sidebar.checkbox("🛠 Debug Mode", value=False)
 data_type = st.sidebar.radio("Select Data Type", ["Stocks", "Crypto"])
+
 
 if data_type == "Stocks":
     rsi_threshold = st.sidebar.slider("RSI Threshold (Short-Term)", 40, 70, 55)
@@ -64,7 +107,7 @@ if tickers and st.button("🔍 Run Scan"):
 
                 if debug_mode:
                     st.write(f"🔍 Raw data preview for {ticker}", df.tail())
-
+                df.attrs["ticker"] = ticker  # Store ticker in DataFrame attributes
                 scores, indicators = compute_scores(df, rsi_threshold, rsi_long_threshold, vol_multiplier)
                 if not scores:
                     if debug_mode:
@@ -184,12 +227,3 @@ if tickers and st.button("🔍 Run Scan"):
     else:
         st.warning("⚠️ No results found or tickers failed to load.")
 
-# 🧪 Alpaca Simulation Expander
-with st.expander("🧪 Run Alpaca Trading Simulation"):
-    alpaca_key = st.text_input("Alpaca API Key", type="password")
-    alpaca_secret = st.text_input("Alpaca Secret", type="password")
-    run_sim = st.button("Run Simulated Trades")
-
-    if run_sim and alpaca_key and alpaca_secret and 'df_filtered' in locals() and not df_filtered.empty:
-        sim_results = run_trade_simulation(df_filtered["Ticker"].tolist(), alpaca_key, alpaca_secret)
-        st.dataframe(pd.DataFrame(sim_results))

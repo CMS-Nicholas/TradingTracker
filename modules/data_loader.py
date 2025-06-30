@@ -1,5 +1,6 @@
 import yfinance as yf
 import pandas as pd
+from modules.indicators import calculate_tsi  # ✅ Add this line
 
 def load_ticker_data(ticker):
     try:
@@ -21,6 +22,9 @@ def load_ticker_data(ticker):
         exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
         exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
         hist['MACD'] = exp1 - exp2
+
+        # ✅ TSI calculation (with standard 6, 13 smoothing)
+        hist = calculate_tsi(hist, r=6, s=13)
 
         return hist
     except Exception as e:

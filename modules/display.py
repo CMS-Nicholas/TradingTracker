@@ -7,7 +7,19 @@ def render_score_table(df):
         return
 
     st.markdown("#### ✅ Full Scored Data")
-    st.dataframe(df.reset_index(drop=True), use_container_width=True)
+    
+    def highlight_valuation(val):
+        if val == 1:
+            return 'background-color: #d4edda; color: #155724'  # green
+        elif val == -1:
+            return 'background-color: #f8d7da; color: #721c24'  # red
+        elif val == 0:
+            return 'background-color: #fff3cd; color: #856404'  # yellow
+        return ''
+
+    styled_df = df.style.applymap(highlight_valuation, subset=['Valuation Score'])
+    st.dataframe(styled_df, use_container_width=True)
+    
 
 
 def render_summary_box(df):

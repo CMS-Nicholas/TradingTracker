@@ -1,10 +1,13 @@
 import pandas as pd
 import numpy as np
+from modules.valuation import get_and_score_valuation, get_valuation_metrics
+from modules.valuation import compute_valuation_score
+from modules.indicators import detect_hidden_bullish_divergence
 
 def compute_scores(df, rsi_threshold, rsi_long_threshold, vol_multiplier):
     df = df.copy()
 
-    print("⏳ [compute_scores] Start scoring...")
+    print("\u23f3 [compute_scores] Start scoring...")
     print(f"📊 Input rows: {len(df)} | Columns: {list(df.columns)}")
 
     # 🚨 Early exit if data is insufficient
@@ -75,11 +78,40 @@ def compute_scores(df, rsi_threshold, rsi_long_threshold, vol_multiplier):
     else:
         pattern_tag = "⚖️ Consolidating"
 
+    # Hidden Bullish Divergence Detection
+    try:
+        if detect_hidden_bullish_divergence(df):
+            short_score += 1
+            print("✨ Hidden Bullish Divergence detected – Short-Term Score +1")
+            pattern_tag += " + Divergence"
+    except Exception as e:
+        print(f"⚠️ Divergence detection failed: {e}")
+
+    # % Change calculations
+    try:
+        change_1d = (df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100
+        change_7d = (df['Close'].iloc[-1] - df['Close'].iloc[-6]) / df['Close'].iloc[-6] * 100
+    except:
+        change_1d = change_7d = 0
+
+    # Valuation Score
+    try:
+        ticker = df.attrs.get("ticker", "")
+        print(f"📌 Valuation ticker passed to scoring: {ticker}")
+        valuation_metrics = get_valuation_metrics(ticker)
+        valuation_score = compute_valuation_score(valuation_metrics)
+        target_price = valuation_metrics.get("target_price") if valuation_metrics else None
+    except Exception as e:
+        print(f"⚠️ Valuation data error: {e}")
+        valuation_score = 0
+        target_price = None
+
     scores = {
         "Short-Term Score": float(short_score),
         "Long-Term Score": float(long_score),
         "Pattern": pattern_tag,
-        "Rebound %": round(avg_rebound, 2)
+        "Rebound %": round(avg_rebound, 2),
+        "Valuation Score": valuation_score
     }
 
     indicators = {
@@ -89,7 +121,10 @@ def compute_scores(df, rsi_threshold, rsi_long_threshold, vol_multiplier):
         "RSI": round(rsi, 2),
         "MACD": round(macd, 4),
         "Current Volume": int(volume),
-        "Avg Volume (20D)": int(avg_volume) if not pd.isna(avg_volume) else 0
+        "Avg Volume (20D)": int(avg_volume) if not pd.isna(avg_volume) else 0,
+        "Daily % Change": round(change_1d, 2),
+        "Weekly % Change": round(change_7d, 2),
+        "Target Price ($)": round(target_price, 2) if target_price else None
     }
 
     print(f"✅ Scoring complete. ST={short_score}, LT={long_score}, Pattern={pattern_tag}")

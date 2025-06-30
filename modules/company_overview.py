@@ -66,17 +66,17 @@ def generate_company_summary(overview_data, openai_key):
         for item in news_data[:5] if item.get("title")
     ) if news_data else "No recent news."
 
-    # DEBUG OUTPUT
-    with st.expander(f"\U0001F4CA Raw Data Preview: {ticker}"):
-        st.markdown(f"**Company Name:** {name}")
-        st.markdown(f"**Ticker:** {ticker}")
-        st.markdown(f"**Business Summary:** {summary or 'N/A'}")
-        st.markdown(f"**P/E Ratio:** {pe_ratio}")
-        st.markdown(f"**Revenue:** {revenue}")
-        st.markdown(f"**Gross Margins:** {gross_margins}")
-        st.markdown(f"**Earnings Date:** {earnings_date}")
-        st.markdown("**Recent News Headlines:**")
-        st.markdown(news_summaries)
+    # ✅ Show raw preview (non-expandable)
+    st.markdown("#### 📊 Raw Data Preview")
+    st.markdown(f"**Company Name:** {name}")
+    st.markdown(f"**Ticker:** {ticker}")
+    st.markdown(f"**Business Summary:** {summary or 'N/A'}")
+    st.markdown(f"**P/E Ratio:** {pe_ratio}")
+    st.markdown(f"**Revenue:** {revenue}")
+    st.markdown(f"**Gross Margins:** {gross_margins}")
+    st.markdown(f"**Earnings Date:** {earnings_date}")
+    st.markdown("**Recent News Headlines:**")
+    st.markdown(news_summaries)
 
     if not summary and news_summaries == "No recent news." and pe_ratio == "N/A" and earnings_date == "N/A":
         return "⚠️ No sufficient data available for this company to generate a summary."
