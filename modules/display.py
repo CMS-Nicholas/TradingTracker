@@ -30,3 +30,32 @@ def render_summary_box(df):
     st.markdown("#### ✅ Top 3 by Short-Term Score")
     top = df.sort_values("Short-Term Score", ascending=False).head(3)
     st.table(top[["Ticker", "Short-Term Score", "Long-Term Score", "Price ($)"]].reset_index(drop=True))
+
+
+def render_discovery_results(discovery_results):
+    if not discovery_results:
+        st.warning("No discovery results found.")
+        return
+
+    st.subheader("🔍 Discovery Results (Top Candidates)")
+
+    rows = []
+    for ticker, data in discovery_results:
+        rows.append({
+            "Ticker": ticker,
+            "Short-Term Score": data.get("Short-Term Score", 0),
+            "Long-Term Score": data.get("Long-Term Score", 0),
+            "Perfect Setup Score": data.get("Perfect Setup Score", "N/A"),
+            "Pattern": data.get("Pattern", ""),
+            "Rebound %": data.get("Rebound %", 0),
+            "Valuation Score": data.get("Valuation Score", 0),
+            "Price ($)": data.get("price", "N/A"),
+            "RSI": data.get("RSI", ""),
+            "MACD": data.get("MACD", ""),
+            "Volume": data.get("Current Volume", ""),
+            "Breakout Tag": "🚀" if "Breakout" in data.get("Pattern", "") else ""
+       
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True)

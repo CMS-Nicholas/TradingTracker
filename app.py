@@ -1,3 +1,4 @@
+from httpx import get
 import streamlit as st
 import pandas as pd
 from modules.data_loader import load_ticker_data
@@ -15,6 +16,8 @@ from modules.email_alerts import send_alert_email
 from modules.company_overview import fetch_company_overview, generate_company_summary
 from modules.crypto_overview import fetch_crypto_data, generate_crypto_summary
 from modules.crypto_scoring import score_crypto
+from modules.discovery_scanner import run_discovery
+from modules.display import render_discovery_results
 
 st.set_page_config(page_title="Modular Stock & Crypto Scanner", layout="wide")
 st.title("📈 Modular Smart Stock & Crypto Scanner")
@@ -22,6 +25,51 @@ st.title("📈 Modular Smart Stock & Crypto Scanner")
 st.sidebar.header("⚙️ Scan Controls")
 debug_mode = st.sidebar.checkbox("🛠 Debug Mode", value=False)
 data_type = st.sidebar.radio("Select Data Type", ["Stocks", "Crypto"])
+
+st.sidebar.subheader("🔎 Stock Discovery Scanner")
+min_price = st.sidebar.number_input("Min Price", value=2.0)
+max_price = st.sidebar.number_input("Max Price", value=5.0)
+batch_size = st.sidebar.slider("Batch Size", 5, 50, 10)
+
+if "discovery_offset" not in st.session_state:
+    st.session_state.discovery_offset = 0
+if "discovery_cache" not in st.session_state:
+    st.session_state.discovery_cache = []
+
+if st.sidebar.button("🔁 Run New Discovery"):
+    st.session_state.discovery_offset = 0
+    with st.spinner("🔍 Scanning market..."):
+        full_results = run_discovery(min_price, max_price, batch_size=1000)  # prefetch
+        st.session_state.discovery_cache = full_results
+
+# Show current batch
+discovery_cache = st.session_state.discovery_cache
+offset = st.session_state.discovery_offset
+end = offset + batch_size
+batch_results = discovery_cache[offset:end]
+
+if batch_results:
+    render_discovery_results(batch_results)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Previous Batch") and offset >= batch_size:
+            st.session_state.discovery_offset -= batch_size
+            st.experimental_rerun()
+    with col2:
+        if st.button("➡️ Next Batch") and end < len(discovery_cache):
+            st.session_state.discovery_offset += batch_size
+            st.experimental_rerun()
+
+    st.caption(f"Showing results {offset+1} to {min(end, len(discovery_cache))} of {len(discovery_cache)}")
+else:
+    if discovery_cache:
+        st.info("✅ Discovery scan complete, but no results in this batch.")
+    else:
+        st.info("Run a new discovery scan from the sidebar.")
+        
+if st.sidebar.checkbox("🔎 Show only PYPL-style Setups"):
+    batch_results = [r for r in batch_results if int(r[1].get("Perfect Setup Score", "0").split("/")[0]) >= 6]
 
 # Top 10 Movers Section
 st.markdown("### 🔢 Top 10 Movers (Daily or Weekly Change)")

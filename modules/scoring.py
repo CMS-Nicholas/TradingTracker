@@ -127,5 +127,43 @@ def compute_scores(df, rsi_threshold, rsi_long_threshold, vol_multiplier):
         "Target Price ($)": round(target_price, 2) if target_price else None
     }
 
+    entry_flag = (
+        50 <= rsi <= 65 and
+        macd > 0 and
+        close > sma_50 and
+        short_score >= 3 and
+        long_score >= 2 and
+        volume >= avg_volume
+    )
+
+    # Suggested Exit Flag (for simulation prediction, not historical real sell point)
+    if avg_rebound >= 3.5:
+        exit_zone = "📈 Take Profit"
+    elif avg_rebound <= -2.5:
+        exit_zone = "⚠️ Stop Loss"
+    else:
+        exit_zone = "⏳ Hold"
+
+    indicators["Suggested Entry"] = "✅" if entry_flag else ""
+    indicators["Exit Zone"] = exit_zone
+
     print(f"✅ Scoring complete. ST={short_score}, LT={long_score}, Pattern={pattern_tag}")
     return scores, indicators
+
+def evaluate_perfect_setup(indicators, scores):
+    checklist = {}
+
+    checklist["Pullback/Base Breakout"] = "✅" if "Breakout" in scores.get("Pattern", "") or "Reversal" in scores.get("Pattern", "") else "❌"
+    checklist["RSI 50–65"] = "✅" if 50 <= indicators.get("RSI", 0) <= 65 else "❌"
+    checklist["MACD Bullish"] = "✅" if indicators.get("MACD", 0) > 0 else "❌"
+    checklist["Above 20D SMA"] = "✅" if indicators.get("Price ($)", 0) > indicators.get("50-Day SMA", 0) else "❌"
+    checklist["Above 50D SMA"] = "✅" if indicators.get("Price ($)", 0) > indicators.get("100-Day SMA", 0) else "❌"
+    checklist["Price < $100"] = "✅" if indicators.get("Price ($)", 0) < 100 else "❌"
+    checklist["No Earnings Next Week"] = "⚠️"  # Optional, if you want to integrate earnings API
+    checklist["Not Overextended"] = "✅" if scores.get("Rebound %", 0) < 30 else "❌"
+    checklist["Reasonable Options"] = "⚠️"  # Optional: only if you add options API
+    checklist["Tight Strike Increments"] = "⚠️"
+
+    score = list(checklist.values()).count("✅")
+    checklist["Perfect Setup Score"] = f"{score}/10"
+    return checklist

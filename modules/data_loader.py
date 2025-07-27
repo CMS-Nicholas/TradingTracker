@@ -30,3 +30,9 @@ def load_ticker_data(ticker):
     except Exception as e:
         print(f"Failed to load data for {ticker}: {e}")
         return None
+
+def get_stock_data(ticker, period="90d", interval="1d"):
+    try:
+        return yf.Ticker(ticker).history(period=period, interval=interval)
+    except Exception:
+        return None

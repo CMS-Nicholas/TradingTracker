@@ -62,3 +62,24 @@ def display_divergence_info(scores: dict, indicators: dict, divergence_found: bo
 
     st.write("### Score Breakdown")
     st.write({k: v for k, v in scores.items() if k in ["Short-Term Score", "Long-Term Score", "Pattern"]})
+
+def plot_bollinger_overlay(ticker, df):
+    st.subheader(f"📉 Bollinger Band Overlay for {ticker}")
+
+    window = 20
+    std_dev = 2
+
+    df['SMA'] = df['Close'].rolling(window=window).mean()
+    df['Upper'] = df['SMA'] + std_dev * df['Close'].rolling(window=window).std()
+    df['Lower'] = df['SMA'] - std_dev * df['Close'].rolling(window=window).std()
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(df['Close'], label='Close', color='blue')
+    ax.plot(df['SMA'], label='SMA (20)', linestyle='--', color='gray')
+    ax.plot(df['Upper'], label='Upper Band', linestyle='--', color='green')
+    ax.plot(df['Lower'], label='Lower Band', linestyle='--', color='red')
+    ax.fill_between(df.index, df['Upper'], df['Lower'], color='gray', alpha=0.1)
+
+    ax.set_title(f"{ticker} Bollinger Band Squeeze")
+    ax.legend()
+    st.pyplot(fig)
